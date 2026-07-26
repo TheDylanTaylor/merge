@@ -1,15 +1,18 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import type { Change, HunkStatus } from "@/types/changeset";
 import { roleLabel } from "@/lib/permissions";
 import SystemIcon from "./SystemIcon";
 import RiskBadge from "./RiskBadge";
 import RoleAvatar from "./RoleAvatar";
 
-function CheckIcon() {
+/** During a merge, each visible hunk is in one of these display states. */
+export type MergePhase = "idle" | "queued" | "applied" | "muted";
+
+function CheckIcon({ size = 13 }: { size?: number }) {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
         d="M20 6 9 17l-5-5"
         stroke="currentColor"
@@ -82,61 +85,97 @@ export default function HunkCard({
   canApproveIt,
   onApprove,
   onReject,
+  mergePhase = "idle",
 }: {
   change: Change;
   status: HunkStatus;
   canApproveIt: boolean;
   onApprove: () => void;
   onReject: () => void;
+  mergePhase?: MergePhase;
 }) {
   const isDanger = change.risk === "danger";
   const approved = status === "approved" && canApproveIt;
   const rejected = status === "rejected";
   const locked = !canApproveIt;
 
-  const accent = rejected
-    ? "var(--muted)"
-    : approved
-      ? "var(--safe)"
-      : "var(--review)";
+  const interactive = mergePhase === "idle";
+  const applied = mergePhase === "applied";
+  const muted = mergePhase === "muted";
 
-  const statusLabel = rejected
-    ? "Rejected"
-    : approved
-      ? "Approved"
-      : locked
-        ? "Locked"
-        : "Needs review";
+  // Status rail colour: applied hunks go green mid-merge; otherwise reflect state.
+  const accent = applied
+    ? "var(--safe)"
+    : rejected
+      ? "var(--muted)"
+      : approved
+        ? "var(--safe)"
+        : "var(--review)";
+
+  const statusLabel = applied
+    ? "Applied"
+    : rejected
+      ? "Rejected"
+      : approved
+        ? "Approved"
+        : locked
+          ? `Locked — needs ${roleLabel(change.requiredRole)}`
+          : "Needs review";
+
+  // Border + glow: applied → green; danger (pre-merge) → red glow; else default.
+  const borderColor = applied
+    ? "color-mix(in srgb, var(--safe) 55%, var(--border))"
+    : isDanger && interactive
+      ? "color-mix(in srgb, var(--danger) 42%, var(--border))"
+      : undefined;
+
+  const boxShadow = applied
+    ? "0 0 26px -8px rgba(63,185,80,0.55)"
+    : isDanger && interactive
+      ? "0 0 24px -6px rgba(248,81,73,0.40)"
+      : undefined;
 
   return (
-    <div
+    <motion.div
       className="hunk-rise group relative overflow-hidden rounded-xl border bg-panel"
-      style={{
-        opacity: rejected ? 0.6 : 1,
-        transition: "opacity 0.3s ease",
-        borderColor: isDanger
-          ? "color-mix(in srgb, var(--danger) 42%, var(--border))"
-          : undefined,
-        boxShadow: isDanger
-          ? "0 0 24px -6px rgba(248,81,73,0.40)"
-          : undefined,
-      }}
+      animate={{ opacity: muted ? 0.32 : rejected && interactive ? 0.6 : 1 }}
+      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+      style={{ borderColor, boxShadow }}
     >
       {/* status rail */}
-      <span
-        className="absolute inset-y-0 left-0 w-[3px]"
-        style={{ background: accent }}
+      <motion.span
+        className="absolute inset-y-0 left-0 z-10 w-[3px]"
+        animate={{ background: accent }}
+        transition={{ duration: 0.3 }}
         aria-hidden
       />
 
-      <div className="p-4 pl-5">
+      {/* apply-sweep: a green band that wipes across the card once when applied */}
+      <AnimatePresence>
+        {applied && (
+          <motion.span
+            key="sweep"
+            className="pointer-events-none absolute inset-0 z-20"
+            initial={{ opacity: 0.85, x: "-45%" }}
+            animate={{ opacity: 0, x: "130%" }}
+            transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] }}
+            style={{
+              background:
+                "linear-gradient(100deg, transparent 0%, color-mix(in srgb, var(--safe) 30%, transparent) 45%, color-mix(in srgb, var(--safe) 8%, transparent) 60%, transparent 100%)",
+            }}
+            aria-hidden
+          />
+        )}
+      </AnimatePresence>
+
+      <div className="relative z-[15] p-4 pl-5">
         {/* header */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <SystemIcon system={change.system} size={30} />
             <h4
               className={`min-w-0 truncate text-[15px] font-medium ${
-                rejected ? "text-muted line-through" : "text-text"
+                rejected && interactive ? "text-muted line-through" : "text-text"
               }`}
               title={change.title}
             >
@@ -155,12 +194,13 @@ export default function HunkCard({
             className="flex gap-2 px-3 py-1.5"
             style={{
               background: "color-mix(in srgb, var(--danger) 7%, transparent)",
+              borderLeft: "2px solid color-mix(in srgb, var(--danger) 55%, transparent)",
             }}
           >
             <span className="select-none text-danger" aria-hidden>
               −
             </span>
-            <span className="whitespace-pre-wrap break-words text-text/80">
+            <span className="whitespace-pre-wrap break-words text-text/75">
               {change.before}
             </span>
           </div>
@@ -169,6 +209,7 @@ export default function HunkCard({
             className="flex gap-2 px-3 py-1.5"
             style={{
               background: "color-mix(in srgb, var(--safe) 9%, transparent)",
+              borderLeft: "2px solid color-mix(in srgb, var(--safe) 55%, transparent)",
             }}
           >
             <span className="select-none text-safe" aria-hidden>
@@ -180,27 +221,27 @@ export default function HunkCard({
           </div>
         </div>
 
-        {/* landmine */}
+        {/* landmine — the emotional beat */}
         {change.conflict && (
           <div
             className="mt-3.5 rounded-lg border p-3"
             style={{
-              borderColor: "color-mix(in srgb, var(--danger) 45%, transparent)",
+              borderColor: "color-mix(in srgb, var(--danger) 48%, transparent)",
               background: "color-mix(in srgb, var(--danger) 8%, transparent)",
-              boxShadow: "0 0 20px -6px rgba(248,81,73,0.4)",
+              boxShadow: "0 0 22px -8px rgba(248,81,73,0.45)",
             }}
           >
             <div className="flex items-start gap-2.5">
               <motion.span
                 className="mt-0.5 shrink-0 text-danger"
-                animate={{ opacity: [0.55, 1, 0.55] }}
+                animate={{ opacity: [0.5, 1, 0.5], scale: [1, 1.08, 1] }}
                 transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
               >
                 <WarnGlyph />
               </motion.span>
               <div className="min-w-0">
-                <div className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.14em] text-danger">
-                  Landmine
+                <div className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.16em] text-danger">
+                  Landmine detected
                 </div>
                 <p className="mt-1 text-[13px] leading-snug text-text">
                   {change.conflict}
@@ -219,11 +260,12 @@ export default function HunkCard({
         )}
 
         {/* actions */}
-        <div className="mt-4 flex items-center justify-between">
+        <div className="mt-4 flex items-center justify-between gap-3">
           <span
-            className="font-mono text-[11px] uppercase tracking-[0.12em]"
+            className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.12em]"
             style={{ color: accent }}
           >
+            {applied && <CheckIcon size={12} />}
             {statusLabel}
           </span>
 
@@ -247,7 +289,8 @@ export default function HunkCard({
                 type="button"
                 onClick={onApprove}
                 aria-pressed={approved}
-                className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[12.5px] font-medium transition-colors"
+                disabled={!interactive}
+                className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[12.5px] font-medium transition-colors disabled:cursor-not-allowed"
                 style={
                   approved
                     ? {
@@ -273,7 +316,8 @@ export default function HunkCard({
               type="button"
               onClick={onReject}
               aria-pressed={rejected}
-              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[12.5px] font-medium transition-colors"
+              disabled={!interactive}
+              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[12.5px] font-medium transition-colors disabled:cursor-not-allowed"
               style={
                 rejected
                   ? {
@@ -296,6 +340,6 @@ export default function HunkCard({
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

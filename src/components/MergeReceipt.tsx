@@ -1,17 +1,13 @@
 "use client";
 
-import { motion, type Variants } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import type { Changeset, MergeResult } from "@/types/changeset";
-import SystemIcon from "./SystemIcon";
+import SystemIcon, { systemLabel } from "./SystemIcon";
+import { ButtonLink } from "./ui/Button";
 
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 type ReceiptPhase = "merged" | "reverting" | "reverted";
-
-const list: Variants = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.12, delayChildren: 0.15 } },
-};
 
 function LinkGlyph() {
   return (
@@ -27,13 +23,27 @@ function LinkGlyph() {
   );
 }
 
-function UndoGlyph() {
+function UndoGlyph({ size = 15 }: { size?: number }) {
   return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
         d="M9 7 4 12l5 5M4 12h11a5 5 0 0 1 0 10h-2"
         stroke="currentColor"
         strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CheckGlyph({ size = 22 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M20 6 9 17l-5-5"
+        stroke="currentColor"
+        strokeWidth="2.4"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -46,13 +56,11 @@ export default function MergeReceipt({
   results,
   phase,
   onRevert,
-  onHome,
 }: {
   changeset: Changeset;
   results: MergeResult[];
   phase: ReceiptPhase;
   onRevert: () => void;
-  onHome: () => void;
 }) {
   const titleFor = (hunkId: string) =>
     changeset.changes.find((c) => c.id === hunkId)?.title ?? hunkId;
@@ -60,101 +68,154 @@ export default function MergeReceipt({
   const reverted = phase === "reverted";
   const reverting = phase === "reverting";
 
-  const okCount = results.filter((r) => r.ok).length;
-  const blockedCount = results.filter((r) => !r.ok).length;
-  const mockedCount = results.filter((r) => r.ok && r.mocked).length;
+  const realApplied = results.filter((r) => r.ok && !r.mocked).length;
+  const simulated = results.filter((r) => r.ok && r.mocked).length;
+  const blocked = results.filter((r) => !r.ok).length;
+  const revertible = results.some((r) => r.ok);
+
+  const summaryLine = reverted
+    ? `${results.filter((r) => r.ok).length} side effect${
+        results.filter((r) => r.ok).length === 1 ? "" : "s"
+      } rolled back`
+    : [
+        realApplied > 0 ? `${realApplied} applied` : null,
+        simulated > 0 ? `${simulated} simulated` : null,
+        blocked > 0 ? `${blocked} blocked` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ") || "Nothing applied";
+
+  const okResults = results.filter((r) => r.ok);
+  const revertOrder = new Map(
+    okResults.map((r, i) => [r.hunkId, okResults.length - 1 - i]),
+  );
 
   return (
-    <motion.div
-      initial="hidden"
-      animate="show"
-      variants={list}
-      className="mx-auto max-w-3xl"
-    >
+    <div className="mx-auto max-w-3xl">
       {/* header */}
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: EASE }} className="mb-6 flex items-center gap-4">
-        <div
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: EASE }}
+        className="mb-6 flex items-center gap-4"
+      >
+        <motion.div
           className="grid h-12 w-12 shrink-0 place-items-center rounded-full border"
-          style={{
-            color: reverted ? "var(--muted)" : "var(--safe)",
+          animate={{
+            color: reverted ? "var(--review)" : "var(--safe)",
             borderColor: reverted
-              ? "var(--border)"
+              ? "color-mix(in srgb, var(--review) 45%, transparent)"
               : "color-mix(in srgb, var(--safe) 45%, transparent)",
-            background: reverted
-              ? "transparent"
+            backgroundColor: reverted
+              ? "color-mix(in srgb, var(--review) 10%, transparent)"
               : "color-mix(in srgb, var(--safe) 12%, transparent)",
           }}
+          transition={{ duration: 0.4, ease: EASE }}
         >
-          {reverted ? (
-            <UndoGlyph />
-          ) : (
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path
-                d="M20 6 9 17l-5-5"
-                stroke="currentColor"
-                strokeWidth="2.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          )}
-        </div>
+          {reverted ? <UndoGlyph size={20} /> : <CheckGlyph />}
+        </motion.div>
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">
-            {reverted ? "Changes reverted" : "Merged to reality"}
+          <h2 className="text-[22px] font-semibold leading-tight tracking-[-0.02em]">
+            {reverted ? "Reality restored" : "Merged to reality"}
           </h2>
-          <p className="mt-0.5 font-mono text-[12px] text-muted">
-            {reverted
-              ? `${results.length} side effects rolled back`
-              : `${okCount} applied · ${mockedCount} mocked · ${blockedCount} blocked`}
-          </p>
+          <p className="mt-0.5 font-mono text-[12px] text-muted">{summaryLine}</p>
         </div>
       </motion.div>
 
-      {/* rows */}
+      {/* rows — reveal sequentially top→down (concrete per-row delays, no variant labels) */}
       <div className="space-y-2.5">
-        {results.map((r) => {
-          const blocked = !r.ok;
+        {results.map((r, i) => {
+          const isBlocked = !r.ok;
+          const dimmed = reverted && r.ok;
+          const revIndex = revertOrder.get(r.hunkId) ?? 0;
           return (
             <motion.div
               key={r.hunkId}
-              initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: EASE }}
-              className="flex items-center gap-3 rounded-xl border bg-panel px-4 py-3"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: dimmed ? 0.5 : 1, y: 0 }}
+              transition={{
+                duration: 0.34,
+                ease: EASE,
+                delay: reverted || reverting ? 0 : 0.12 + i * 0.08,
+              }}
+              className="relative flex items-center gap-3 overflow-hidden rounded-xl border bg-panel px-4 py-3"
               style={{
-                opacity: reverted ? 0.55 : 1,
-                borderColor: blocked
+                borderColor: isBlocked
                   ? "color-mix(in srgb, var(--danger) 42%, var(--border))"
                   : undefined,
               }}
             >
+              {/* amber reverse-sweep while reverting (bottom → top stagger) */}
+              <AnimatePresence>
+                {reverting && r.ok && (
+                  <motion.span
+                    key="revert-sweep"
+                    className="pointer-events-none absolute inset-0 z-20"
+                    initial={{ opacity: 0.8, x: "130%" }}
+                    animate={{ opacity: 0, x: "-45%" }}
+                    transition={{
+                      duration: 0.55,
+                      ease: EASE,
+                      delay: revIndex * 0.07,
+                    }}
+                    style={{
+                      background:
+                        "linear-gradient(260deg, transparent 0%, color-mix(in srgb, var(--review) 28%, transparent) 45%, transparent 100%)",
+                    }}
+                    aria-hidden
+                  />
+                )}
+              </AnimatePresence>
+
               <SystemIcon system={r.system} size={30} />
 
-              <div className="min-w-0 flex-1">
+              <div className="relative z-10 min-w-0 flex-1">
                 <p
                   className={`truncate text-[14px] ${
-                    reverted ? "text-muted line-through" : "text-text"
+                    dimmed ? "text-muted line-through" : "text-text"
                   }`}
                 >
                   {titleFor(r.hunkId)}
                 </p>
                 <p
                   className="truncate font-mono text-[11.5px]"
-                  style={{ color: blocked ? "var(--danger)" : "var(--muted)" }}
+                  style={{
+                    color: isBlocked
+                      ? "var(--danger)"
+                      : dimmed
+                        ? "var(--faint)"
+                        : "var(--muted)",
+                  }}
                 >
-                  {blocked
+                  {isBlocked
                     ? r.error ?? "Blocked — insufficient permission"
-                    : r.detail ?? "Applied"}
+                    : dimmed
+                      ? `Reverted on ${systemLabel(r.system)}`
+                      : r.detail ?? "Applied"}
                 </p>
               </div>
 
-              <div className="flex shrink-0 items-center gap-2">
-                {r.ok && r.mocked && (
-                  <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted">
+              <div className="relative z-10 flex shrink-0 items-center gap-2">
+                {r.ok && r.mocked && !reverted && (
+                  <span className="rounded-full border border-border bg-surface-2 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted">
                     mocked
                   </span>
                 )}
 
-                {blocked ? (
+                {r.externalUrl && !reverted && (
+                  <a
+                    href={r.externalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[11px] text-muted transition-colors hover:border-border-strong hover:text-accent"
+                  >
+                    <LinkGlyph />
+                    open
+                  </a>
+                )}
+
+                {/* outcome glyph */}
+                {isBlocked ? (
                   <span
                     className="grid h-6 w-6 place-items-center rounded-full"
                     style={{
@@ -173,40 +234,26 @@ export default function MergeReceipt({
                       />
                     </svg>
                   </span>
-                ) : (
-                  !reverted && (
-                    <span
-                      className="grid h-6 w-6 place-items-center rounded-full"
-                      style={{
-                        color: "var(--safe)",
-                        background:
-                          "color-mix(in srgb, var(--safe) 14%, transparent)",
-                      }}
-                      aria-label="applied"
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                        <path
-                          d="M20 6 9 17l-5-5"
-                          stroke="currentColor"
-                          strokeWidth="2.6"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </span>
-                  )
-                )}
-
-                {r.externalUrl && !reverted && (
-                  <a
-                    href={r.externalUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 font-mono text-[11px] text-muted transition-colors hover:text-text"
+                ) : reverted ? (
+                  <span
+                    className="grid h-6 w-6 place-items-center rounded-full text-muted"
+                    style={{ background: "var(--surface-2)" }}
+                    aria-label="reverted"
                   >
-                    <LinkGlyph />
-                    open
-                  </a>
+                    <UndoGlyph size={12} />
+                  </span>
+                ) : (
+                  <span
+                    className="grid h-6 w-6 place-items-center rounded-full"
+                    style={{
+                      color: "var(--safe)",
+                      background:
+                        "color-mix(in srgb, var(--safe) 14%, transparent)",
+                    }}
+                    aria-label="applied"
+                  >
+                    <CheckGlyph size={12} />
+                  </span>
                 )}
               </div>
             </motion.div>
@@ -216,27 +263,35 @@ export default function MergeReceipt({
 
       {/* footer actions */}
       <motion.div
-        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: EASE }}
-        className="mt-7 flex items-center justify-between gap-3"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{
+          duration: 0.34,
+          ease: EASE,
+          delay: reverted || reverting ? 0 : 0.12 + results.length * 0.08,
+        }}
+        className="mt-7 flex flex-wrap items-center justify-between gap-3"
       >
-        <button
-          type="button"
-          onClick={onHome}
-          className="rounded-lg border border-border px-4 py-2.5 text-[13px] font-medium text-muted transition-colors hover:text-text"
-        >
-          New changeset
-        </button>
+        <div className="flex items-center gap-2.5">
+          <ButtonLink href="/app" variant="secondary" size="md">
+            Back to overview
+          </ButtonLink>
+          <ButtonLink href="/app#compose" variant="ghost" size="md">
+            New changeset
+          </ButtonLink>
+        </div>
 
         {reverted ? (
-          <span className="font-mono text-[12px] text-muted">
-            Reality restored.
+          <span className="inline-flex items-center gap-2 font-mono text-[12px] text-muted">
+            <UndoGlyph size={13} />
+            Every side effect has been rolled back.
           </span>
-        ) : (
+        ) : revertible ? (
           <button
             type="button"
             onClick={onRevert}
             disabled={reverting}
-            className="inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-[13px] font-semibold transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-[13px] font-semibold transition-colors disabled:opacity-60"
             style={{
               color: "var(--danger)",
               borderColor: "color-mix(in srgb, var(--danger) 45%, transparent)",
@@ -260,8 +315,12 @@ export default function MergeReceipt({
               </>
             )}
           </button>
+        ) : (
+          <span className="font-mono text-[12px] text-muted">
+            Nothing to revert.
+          </span>
         )}
       </motion.div>
-    </motion.div>
+    </div>
   );
 }

@@ -2,25 +2,74 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   Merge — design tokens
+   Near-black canvas · single violet accent · git-diff semantics.
+   Layered surfaces give depth without leaving the monochrome register.
+   ========================================================================== */
 :root {
-  --bg: #0a0a0b;
-  --panel: #111114;
-  --panel-2: #17171c;
+  /* surfaces (dark → light) */
+  --bg: #09090b;
+  --bg-subtle: #0c0c0f;
+  --surface: #121216;
+  --surface-2: #17171d;
+  --surface-3: #1e1e25;
+  --surface-hover: #202028;
+
+  /* lines */
   --border: #232329;
-  --text: #ededf0;
-  --muted: #8a8a94;
+  --border-strong: #33333d;
+  --hairline: rgba(255, 255, 255, 0.06);
+
+  /* text */
+  --text: #f3f3f5;
+  --text-2: #b6b6c0;
+  --muted: #83838e;
+  --faint: #5b5b65;
+
+  /* brand accent */
   --accent: #7c6cf6;
-  --accent-dim: #4a3fa8;
+  --accent-2: #a08bff;
+  --accent-soft: rgba(124, 108, 246, 0.14);
+  --accent-ink: #ffffff;
+
+  /* diff / risk semantics */
   --safe: #3fb950;
   --review: #e0a32e;
   --danger: #f85149;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter,
-    Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", monospace;
+
+  /* radii */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+
+  /* elevation */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 30px -12px rgba(0, 0, 0, 0.7);
+  --shadow-lg: 0 24px 60px -20px rgba(0, 0, 0, 0.8);
+  --shadow-glow: 0 0 40px -10px color-mix(in srgb, var(--accent) 70%, transparent);
+
+  /* motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* type */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", "JetBrains Mono",
+    Menlo, monospace;
+
+  --maxw: 1120px;
 }
 
 * {
   border-color: var(--border);
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
 html,
@@ -32,10 +81,26 @@ body {
 
 body {
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  font-feature-settings: "cv11", "ss01";
 }
 
-/* Subtle dotted grid background — apply .grid-bg to a full-bleed layer */
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: #fff;
+}
+
+/* focus ring — consistent, keyboard-only */
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---- utilities ---------------------------------------------------------- */
+
+/* dotted grid backdrop — apply to a full-bleed pointer-events-none layer */
 .grid-bg {
   background-image: radial-gradient(
     circle at 1px 1px,
@@ -44,8 +109,78 @@ body {
   );
   background-size: 24px 24px;
 }
+.grid-bg-lg {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(255, 255, 255, 0.05) 1px,
+    transparent 0
+  );
+  background-size: 40px 40px;
+}
 
-/* Thin custom scrollbars */
+/* violet aurora glow — decorative hero/section light */
+.aurora {
+  background:
+    radial-gradient(
+      60% 50% at 50% -8%,
+      color-mix(in srgb, var(--accent) 22%, transparent),
+      transparent 70%
+    );
+}
+
+/* thin hairline divider */
+.hairline {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--border-strong),
+    transparent
+  );
+}
+
+/* frosted panel */
+.glass {
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+}
+
+/* gradient text (wordmark / hero flourishes) */
+.text-gradient {
+  background: linear-gradient(
+    180deg,
+    var(--text) 0%,
+    color-mix(in srgb, var(--text) 62%, var(--bg)) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.text-gradient-accent {
+  background: linear-gradient(120deg, var(--accent-2), var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* card border that lights up on hover (used across product + marketing) */
+.card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  transition:
+    border-color 0.25s var(--ease-out),
+    background 0.25s var(--ease-out),
+    transform 0.25s var(--ease-out);
+}
+.card-hover:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+/* scrollbars */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -55,14 +190,26 @@ body {
   border-radius: 6px;
   border: 2px solid var(--bg);
 }
+::-webkit-scrollbar-thumb:hover {
+  background: #35353d;
+}
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 
-/* Reliable, JS-independent card entrance. Framer-motion 11 + React 19 can
-   silently drop a component's mount animation (leaving it stuck at its
-   `initial` opacity:0). This CSS keyframe always fires and animates TRANSFORM
-   ONLY — visibility is never gated on a JS animation that might not run. */
+/* mono eyebrow label used everywhere */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ---- keyframes ---------------------------------------------------------- */
+
+/* JS-independent card entrance (transform only — never gate visibility on JS
+   because framer-motion 11 + React 19 can silently drop mount animations) */
 @keyframes hunk-rise {
   from {
     transform: translateY(12px);
@@ -72,10 +219,96 @@ body {
   }
 }
 .hunk-rise {
-  animation: hunk-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: hunk-rise 0.42s var(--ease-out) both;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.rise-in {
+  animation: rise-in 0.6s var(--ease-out) both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.pulse-glow {
+  animation: pulse-glow 2s var(--ease-in-out) infinite;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes gradient-pan {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+/* slow drifting aurora for hero */
+@keyframes aurora-drift {
+  0%,
+  100% {
+    transform: translate3d(-2%, 0, 0) scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: translate3d(2%, -1%, 0) scale(1.06);
+    opacity: 1;
+  }
+}
+.aurora-drift {
+  animation: aurora-drift 14s var(--ease-in-out) infinite;
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* animated connector line (systems / flow) */
+@keyframes dash-flow {
+  to {
+    stroke-dashoffset: -100;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
   *,
   *::before,
   *::after {

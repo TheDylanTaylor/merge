@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AnimatePresence, motion, MotionConfig } from "framer-motion";
+import {
+  AnimatePresence,
+  motion,
+  MotionConfig,
+  useReducedMotion,
+} from "framer-motion";
 import type {
   Changeset,
   Change,
@@ -11,21 +16,26 @@ import type {
   Role,
   System,
 } from "@/types/changeset";
-import { ROLES, canApprove, roleLabel } from "@/lib/permissions";
-import HunkCard from "./HunkCard";
+import { canApprove, roleLabel } from "@/lib/permissions";
+import { recordMerge, recordRevert } from "@/lib/store";
+import HunkCard, { type MergePhase } from "./HunkCard";
 import MergeBar from "./MergeBar";
 import MergeReceipt from "./MergeReceipt";
-import RoleAvatar from "./RoleAvatar";
+import ReviewHeader from "./review/ReviewHeader";
 import { systemLabel } from "./SystemIcon";
 
 type Phase = "review" | "merging" | "merged" | "reverting" | "reverted";
 
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
+// Execution kinds that fire genuine external side effects (vs. noop mock systems).
 const REAL_KINDS = new Set(["email", "linear", "slack", "shopping"]);
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export default function ReviewClient({ id }: { id: string }) {
   const router = useRouter();
+  const reduceMotion = useReducedMotion();
 
   const [changeset, setChangeset] = useState<Changeset | null>(null);
   const [ready, setReady] = useState(false);
@@ -33,12 +43,14 @@ export default function ReviewClient({ id }: { id: string }) {
   const [actorRole, setActorRole] = useState<Role>("ceo");
   const [phase, setPhase] = useState<Phase>("review");
   const [results, setResults] = useState<MergeResult[]>([]);
+  // Ids that have visually "landed" during the merge apply-sweep.
+  const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
 
-  // Hydrate from sessionStorage (the generator handed the changeset off here).
+  // Hydrate from sessionStorage (the composer handed the changeset off here).
   useEffect(() => {
     const raw = sessionStorage.getItem(`changeset:${id}`);
     if (!raw) {
-      router.replace("/");
+      router.replace("/app");
       return;
     }
     try {
@@ -52,7 +64,7 @@ export default function ReviewClient({ id }: { id: string }) {
       setStatusMap(initial);
       setReady(true);
     } catch {
-      router.replace("/");
+      router.replace("/app");
     }
   }, [id, router]);
 
@@ -63,9 +75,7 @@ export default function ReviewClient({ id }: { id: string }) {
     }));
 
   // Effective per-hunk classification, gated by the actor's role.
-  const classify = (
-    c: Change,
-  ): "approved" | "rejected" | "review" => {
+  const classify = (c: Change): "approved" | "rejected" | "review" => {
     const s = statusMap[c.id] ?? "pending";
     if (s === "rejected") return "rejected";
     if (s === "approved" && canApprove(actorRole, c)) return "approved";
@@ -87,13 +97,7 @@ export default function ReviewClient({ id }: { id: string }) {
       } else if (k === "rejected") rejected += 1;
       else review += 1;
     }
-    return {
-      approved,
-      rejected,
-      review,
-      real,
-      total: changeset.changes.length,
-    };
+    return { approved, rejected, review, real, total: changeset.changes.length };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [changeset, statusMap, actorRole]);
 
@@ -112,40 +116,90 @@ export default function ReviewClient({ id }: { id: string }) {
     return order.map((system) => ({ system, changes: map.get(system)! }));
   }, [changeset]);
 
+  const approvableCount = useMemo(
+    () =>
+      changeset
+        ? changeset.changes.filter((c) => canApprove(actorRole, c)).length
+        : 0,
+    [changeset, actorRole],
+  );
+
+  // Per-hunk display state while merging (drives the apply-sweep).
+  const mergePhaseFor = (c: Change): MergePhase => {
+    if (phase !== "merging") return "idle";
+    if (classify(c) !== "approved") return "muted";
+    return appliedIds.has(c.id) ? "applied" : "queued";
+  };
+
   async function handleMerge() {
     if (!changeset || phase === "merging") return;
-    const approvedHunkIds = changeset.changes
+    // Approved hunks in visual (grouped) order so the sweep cascades top→bottom.
+    const orderedApproved = groups
+      .flatMap((g) => g.changes)
       .filter((c) => classify(c) === "approved")
       .map((c) => c.id);
-    if (approvedHunkIds.length === 0) return;
+    if (orderedApproved.length === 0) return;
 
     setPhase("merging");
-    try {
+    setAppliedIds(new Set());
+
+    // Fire the real merge in parallel with the apply-sweep.
+    const apiPromise = (async () => {
       const res = await fetch("/api/merge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ changeset, approvedHunkIds, actorRole }),
+        body: JSON.stringify({ changeset, approvedHunkIds: orderedApproved, actorRole }),
       });
-      if (!res.ok) throw new Error();
-      const data = (await res.json()) as { results: MergeResult[] };
+      if (!res.ok) throw new Error("merge failed");
+      return (await res.json()) as { results: MergeResult[] };
+    })();
+
+    // Sequential apply-sweep — each hunk "lands" one after another.
+    const stagger = reduceMotion ? 0 : 95;
+    for (const hunkId of orderedApproved) {
+      if (stagger) await wait(stagger);
+      setAppliedIds((prev) => {
+        const next = new Set(prev);
+        next.add(hunkId);
+        return next;
+      });
+    }
+    if (!reduceMotion) await wait(340);
+
+    try {
+      const data = await apiPromise;
+      recordMerge(changeset, data.results, actorRole); // → ledger
       setResults(data.results);
       setPhase("merged");
     } catch {
       setPhase("review");
+      setAppliedIds(new Set());
     }
   }
 
   async function handleRevert() {
-    if (phase === "reverting" || results.length === 0) return;
+    if (!changeset || phase === "reverting" || results.length === 0) return;
     setPhase("reverting");
-    try {
+
+    const apiPromise = (async () => {
       const res = await fetch("/api/revert", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ results }),
       });
-      if (!res.ok) throw new Error();
-      const data = (await res.json()) as { results: MergeResult[] };
+      if (!res.ok) throw new Error("revert failed");
+      return (await res.json()) as { results: MergeResult[] };
+    })();
+
+    // Let the amber reverse-sweep play before flipping to the reverted state.
+    if (!reduceMotion) {
+      const okCount = results.filter((r) => r.ok).length;
+      await wait(Math.min(okCount, 7) * 70 + 380);
+    }
+
+    try {
+      const data = await apiPromise;
+      recordRevert(changeset.id, changeset.goal, data.results); // → ledger
       setResults(data.results);
       setPhase("reverted");
     } catch {
@@ -153,7 +207,7 @@ export default function ReviewClient({ id }: { id: string }) {
     }
   }
 
-  // ---- loading / guard states ----
+  // ---- loading / guard state ----
   if (!ready || !changeset) {
     return (
       <main className="grid min-h-screen place-items-center">
@@ -168,100 +222,54 @@ export default function ReviewClient({ id }: { id: string }) {
     );
   }
 
-  const showReceipt = phase === "merged" || phase === "reverting" || phase === "reverted";
+  const receiptPhase =
+    phase === "merged" || phase === "reverting" || phase === "reverted";
+  const switcherLocked = phase !== "review";
 
   return (
     <MotionConfig reducedMotion="user">
       <div className="relative flex min-h-screen flex-col">
-        <div className="grid-bg pointer-events-none fixed inset-0 opacity-50" />
+        <div className="grid-bg pointer-events-none fixed inset-0 opacity-40" />
+        <div className="aurora pointer-events-none fixed inset-x-0 top-0 h-64 opacity-60" />
 
-        {/* header */}
-        <header className="relative z-10 border-b border-border/80 bg-bg/70 backdrop-blur-md">
-          <div className="mx-auto max-w-4xl px-6 py-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <button
-                  type="button"
-                  onClick={() => router.push("/")}
-                  className="mb-2 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-text"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M15 6l-6 6 6 6"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                  Merge
-                </button>
-                <h1 className="truncate text-xl font-semibold tracking-tight">
-                  {changeset.goal}
-                </h1>
-                <p className="mt-1 line-clamp-2 text-[13.5px] text-muted">
-                  {changeset.summary}
-                </p>
-              </div>
-
-              {/* role switcher */}
-              <div className="shrink-0">
-                <p className="mb-1.5 text-right font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
-                  Acting as
-                </p>
-                <div className="flex gap-1 rounded-lg border bg-panel p-1">
-                  {ROLES.map((r) => {
-                    const active = actorRole === r.id;
-                    return (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onClick={() => setActorRole(r.id)}
-                        disabled={showReceipt}
-                        title={r.label}
-                        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11.5px] font-medium transition-colors disabled:opacity-50"
-                        style={{
-                          background: active
-                            ? "color-mix(in srgb, var(--accent) 16%, transparent)"
-                            : "transparent",
-                          color: active ? "var(--text)" : "var(--muted)",
-                        }}
-                      >
-                        <RoleAvatar role={r.id} size={18} />
-                        <span className="hidden sm:inline">{r.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
+        <ReviewHeader
+          id={changeset.id}
+          goal={changeset.goal}
+          summary={changeset.summary}
+          hunkCount={changeset.changes.length}
+          systemCount={groups.length}
+          dangerCount={changeset.changes.filter((c) => c.risk === "danger").length}
+          createdAt={changeset.createdAt}
+          actorRole={actorRole}
+          onRole={setActorRole}
+          disabled={switcherLocked}
+        />
 
         {/* body */}
         <main className="relative z-10 mx-auto w-full max-w-4xl flex-1 px-6 py-8">
           <AnimatePresence mode="wait">
-            {showReceipt ? (
+            {receiptPhase ? (
               <motion.div
                 key="receipt"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
+                transition={{ duration: 0.24 }}
               >
                 <MergeReceipt
                   changeset={changeset}
                   results={results}
-                  phase={phase}
+                  phase={phase as "merged" | "reverting" | "reverted"}
                   onRevert={handleRevert}
-                  onHome={() => router.push("/")}
                 />
               </motion.div>
             ) : (
               <motion.div
                 key="diff"
                 initial={{ opacity: 0 }}
-                animate={{ opacity: phase === "merging" ? 0.5 : 1 }}
+                animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
+                transition={{ duration: 0.24 }}
                 className="space-y-9"
               >
                 {groups.map((g, gi) => (
@@ -276,13 +284,13 @@ export default function ReviewClient({ id }: { id: string }) {
                       <h2 className="font-mono text-[12px] uppercase tracking-[0.16em] text-muted">
                         {systemLabel(g.system)}
                       </h2>
-                      <span className="rounded-full border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted">
+                      <span className="rounded-full border border-border px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-muted">
                         {g.changes.length}
                       </span>
                       <div className="h-px flex-1 bg-border" />
                     </div>
 
-                    <motion.div className="space-y-3">
+                    <div className="space-y-3">
                       {g.changes.map((c) => (
                         <HunkCard
                           key={c.id}
@@ -291,19 +299,23 @@ export default function ReviewClient({ id }: { id: string }) {
                           canApproveIt={canApprove(actorRole, c)}
                           onApprove={() => setStatus(c.id, "approved")}
                           onReject={() => setStatus(c.id, "rejected")}
+                          mergePhase={mergePhaseFor(c)}
                         />
                       ))}
-                    </motion.div>
+                    </div>
                   </motion.section>
                 ))}
 
                 <p className="pt-2 text-center font-mono text-[11px] text-muted">
                   Acting as {roleLabel(actorRole)} — you can approve{" "}
-                  {
-                    changeset.changes.filter((c) => canApprove(actorRole, c))
-                      .length
-                  }{" "}
-                  of {changeset.changes.length} hunks.
+                  <span className="tabular-nums text-text-2">
+                    {approvableCount}
+                  </span>{" "}
+                  of{" "}
+                  <span className="tabular-nums text-text-2">
+                    {changeset.changes.length}
+                  </span>{" "}
+                  hunks.
                 </p>
               </motion.div>
             )}
@@ -311,7 +323,7 @@ export default function ReviewClient({ id }: { id: string }) {
         </main>
 
         {/* merge bar */}
-        {!showReceipt && (
+        {!receiptPhase && (
           <MergeBar
             approvedCount={counts.approved}
             rejectedCount={counts.rejected}
