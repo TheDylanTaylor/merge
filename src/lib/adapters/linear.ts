@@ -1,7 +1,9 @@
-// Linear adapter (GraphQL). Real when LINEAR_API_KEY + LINEAR_TEAM_ID present.
+// Linear adapter (GraphQL). Real when a Linear key (Data Vault or LINEAR_API_KEY)
+// AND LINEAR_TEAM_ID are present.
 // NOTE: Linear uses a raw API key in the Authorization header (NO "Bearer").
 
-import { env, caps } from "@/lib/env";
+import { env } from "@/lib/env";
+import { resolveSecret } from "@/lib/hexclave";
 import type { MergeResult } from "@/types/changeset";
 
 const LINEAR_URL = "https://api.linear.app/graphql";
@@ -13,12 +15,13 @@ interface LinearResponse<T> {
 
 async function linearFetch<T>(
   query: string,
-  variables: Record<string, unknown>
+  variables: Record<string, unknown>,
+  apiKey: string
 ): Promise<LinearResponse<T>> {
   const res = await fetch(LINEAR_URL, {
     method: "POST",
     headers: {
-      Authorization: env.linearKey as string,
+      Authorization: apiKey,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ query, variables }),
@@ -30,7 +33,8 @@ export async function createIssue(spec: {
   title: string;
   description: string;
 }): Promise<Partial<MergeResult>> {
-  if (!caps.linear) {
+  const apiKey = await resolveSecret("linear", env.linearKey);
+  if (!apiKey || !env.linearTeamId) {
     return {
       ok: true,
       mocked: true,
@@ -51,13 +55,17 @@ export async function createIssue(spec: {
       success?: boolean;
       issue?: { id: string; url: string; identifier: string };
     };
-  }>(query, {
-    input: {
-      title: spec.title,
-      description: spec.description,
-      teamId: env.linearTeamId,
+  }>(
+    query,
+    {
+      input: {
+        title: spec.title,
+        description: spec.description,
+        teamId: env.linearTeamId,
+      },
     },
-  });
+    apiKey
+  );
 
   const issue = json.data?.issueCreate?.issue;
   if (json.errors?.length || !issue) {
@@ -80,7 +88,8 @@ export async function createIssue(spec: {
 export async function archiveIssue(
   externalId: string
 ): Promise<Partial<MergeResult>> {
-  if (!caps.linear) {
+  const apiKey = await resolveSecret("linear", env.linearKey);
+  if (!apiKey || !env.linearTeamId) {
     return { ok: true, mocked: true, detail: "Would archive Linear issue" };
   }
 
@@ -91,7 +100,8 @@ export async function archiveIssue(
 
   const json = await linearFetch<{ issueArchive?: { success?: boolean } }>(
     query,
-    { id: externalId }
+    { id: externalId },
+    apiKey
   );
 
   if (json.errors?.length || !json.data?.issueArchive?.success) {

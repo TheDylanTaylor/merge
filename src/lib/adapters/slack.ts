@@ -1,18 +1,21 @@
-// Slack adapter. Real when SLACK_BOT_TOKEN + SLACK_CHANNEL_ID present (revertable),
-// falls back to an incoming webhook (post-only, no revert), else mock.
+// Slack adapter. Real when a bot token (Data Vault or SLACK_BOT_TOKEN) +
+// SLACK_CHANNEL_ID are present (revertable), falls back to an incoming webhook
+// (post-only, no revert), else mock.
 // Slack returns HTTP 200 even on failure — we always check the JSON `ok` flag.
 
-import { env, caps } from "@/lib/env";
+import { env } from "@/lib/env";
+import { resolveSecret } from "@/lib/hexclave";
 import type { MergeResult } from "@/types/changeset";
 
 export async function postMessage(spec: {
   text: string;
 }): Promise<Partial<MergeResult>> {
-  if (caps.slack) {
+  const token = await resolveSecret("slack", env.slackBotToken);
+  if (token && env.slackChannelId) {
     const res = await fetch("https://slack.com/api/chat.postMessage", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.slackBotToken}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json; charset=utf-8",
       },
       body: JSON.stringify({ channel: env.slackChannelId, text: spec.text }),
@@ -63,13 +66,14 @@ export async function postMessage(spec: {
 export async function deleteMessage(
   ts: string
 ): Promise<Partial<MergeResult>> {
-  if (!caps.slack) {
+  const token = await resolveSecret("slack", env.slackBotToken);
+  if (!token || !env.slackChannelId) {
     return { ok: true, mocked: true, detail: "Would delete Slack message" };
   }
   const res = await fetch("https://slack.com/api/chat.delete", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${env.slackBotToken}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json; charset=utf-8",
     },
     body: JSON.stringify({ channel: env.slackChannelId, ts }),

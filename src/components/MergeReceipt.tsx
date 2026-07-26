@@ -13,16 +13,6 @@ const list: Variants = {
   show: { transition: { staggerChildren: 0.12, delayChildren: 0.15 } },
 };
 
-const row: Variants = {
-  hidden: { opacity: 0, y: 12, filter: "blur(4px)" },
-  show: {
-    opacity: 1,
-    y: 0,
-    filter: "blur(0px)",
-    transition: { duration: 0.45, ease: EASE },
-  },
-};
-
 function LinkGlyph() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>

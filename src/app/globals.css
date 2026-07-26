@@ -59,6 +59,22 @@ body {
   background: transparent;
 }
 
+/* Reliable, JS-independent card entrance. Framer-motion 11 + React 19 can
+   silently drop a component's mount animation (leaving it stuck at its
+   `initial` opacity:0). This CSS keyframe always fires and animates TRANSFORM
+   ONLY — visibility is never gated on a JS animation that might not run. */
+@keyframes hunk-rise {
+  from {
+    transform: translateY(12px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.hunk-rise {
+  animation: hunk-rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

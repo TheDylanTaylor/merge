@@ -7,8 +7,6 @@ import SystemIcon from "./SystemIcon";
 import RiskBadge from "./RiskBadge";
 import RoleAvatar from "./RoleAvatar";
 
-const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
-
 function CheckIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -78,13 +76,6 @@ function WarnGlyph() {
   );
 }
 
-const DIFF = {
-  card: {
-    hidden: { opacity: 0, y: 10 },
-    show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: EASE } },
-  },
-};
-
 export default function HunkCard({
   change,
   status,
@@ -118,12 +109,11 @@ export default function HunkCard({
         : "Needs review";
 
   return (
-    <motion.div
-      className="group relative overflow-hidden rounded-xl border bg-panel"
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: rejected ? 0.6 : 1, y: 0 }}
-      transition={{ duration: 0.35, ease: EASE }}
+    <div
+      className="hunk-rise group relative overflow-hidden rounded-xl border bg-panel"
       style={{
+        opacity: rejected ? 0.6 : 1,
+        transition: "opacity 0.3s ease",
         borderColor: isDanger
           ? "color-mix(in srgb, var(--danger) 42%, var(--border))"
           : undefined,
@@ -306,6 +296,6 @@ export default function HunkCard({
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

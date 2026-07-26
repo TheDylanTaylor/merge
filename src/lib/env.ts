@@ -2,6 +2,8 @@
 // The app is designed to run fully in MOCK mode with zero keys, and to "go
 // real" per-adapter as keys are added. Nothing here throws on missing keys.
 
+import "server-only";
+
 function get(name: string): string | undefined {
   const v = process.env[name];
   return v && v.trim().length > 0 ? v.trim() : undefined;

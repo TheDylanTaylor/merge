@@ -1,8 +1,10 @@
-// Email adapter (Resend). Real when RESEND_API_KEY is present, else mock.
+// Email adapter (Resend). Real when a Resend key is available — sourced from the
+// Hexclave Data Vault when present, otherwise the RESEND_API_KEY env var.
 // In sandbox we ALWAYS deliver to env.demoEmailTo, but the detail names the
 // intended audience so the demo reads truthfully.
 
-import { env, caps } from "@/lib/env";
+import { env } from "@/lib/env";
+import { resolveSecret } from "@/lib/hexclave";
 import type { MergeResult } from "@/types/changeset";
 
 const RESEND_URL = "https://api.resend.com/emails";
@@ -13,14 +15,15 @@ export async function sendEmail(spec: {
   subject: string;
   html: string;
 }): Promise<Partial<MergeResult>> {
-  if (!caps.email) {
+  const apiKey = await resolveSecret("resend", env.resendKey);
+  if (!apiKey) {
     return { ok: true, mocked: true, detail: `Would email ${spec.to}` };
   }
 
   const res = await fetch(RESEND_URL, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${env.resendKey}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -56,11 +59,12 @@ export async function sendEmail(spec: {
 export async function revertEmail(
   prev: MergeResult
 ): Promise<Partial<MergeResult>> {
-  if (!prev.mocked && caps.email) {
+  const apiKey = await resolveSecret("resend", env.resendKey);
+  if (!prev.mocked && apiKey) {
     await fetch(RESEND_URL, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.resendKey}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

@@ -2,12 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  AnimatePresence,
-  motion,
-  MotionConfig,
-  type Variants,
-} from "framer-motion";
+import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import type {
   Changeset,
   Change,
@@ -26,15 +21,6 @@ import { systemLabel } from "./SystemIcon";
 type Phase = "review" | "merging" | "merged" | "reverting" | "reverted";
 
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
-
-const listVariants: Variants = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.06, delayChildren: 0.05 } },
-};
-const sectionVariants: Variants = {
-  hidden: { opacity: 0, y: 12 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: EASE } },
-};
 
 const REAL_KINDS = new Set(["email", "linear", "slack", "shopping"]);
 

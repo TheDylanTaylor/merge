@@ -13,6 +13,13 @@ export async function POST(req: Request) {
       results?: MergeResult[];
     };
 
+    if (body.results !== undefined && !Array.isArray(body.results)) {
+      return Response.json(
+        { error: "Invalid results", results: [] },
+        { status: 400 }
+      );
+    }
+
     const reverted: MergeResult[] = [];
     for (const result of body.results ?? []) {
       reverted.push(result.ok ? await revertHunk(result) : result);
