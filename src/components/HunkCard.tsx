@@ -119,29 +119,17 @@ export default function HunkCard({
 
   return (
     <motion.div
-      variants={DIFF.card}
       className="group relative overflow-hidden rounded-xl border bg-panel"
-      animate={
-        isDanger
-          ? {
-              boxShadow: [
-                "0 0 0 0 rgba(248,81,73,0.0)",
-                "0 0 22px -4px rgba(248,81,73,0.35)",
-                "0 0 0 0 rgba(248,81,73,0.0)",
-              ],
-            }
-          : undefined
-      }
-      transition={
-        isDanger
-          ? { duration: 2.6, repeat: Infinity, ease: "easeInOut" }
-          : undefined
-      }
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: rejected ? 0.6 : 1, y: 0 }}
+      transition={{ duration: 0.35, ease: EASE }}
       style={{
         borderColor: isDanger
           ? "color-mix(in srgb, var(--danger) 42%, var(--border))"
           : undefined,
-        opacity: rejected ? 0.62 : 1,
+        boxShadow: isDanger
+          ? "0 0 24px -6px rgba(248,81,73,0.40)"
+          : undefined,
       }}
     >
       {/* status rail */}

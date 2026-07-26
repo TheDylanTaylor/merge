@@ -90,7 +90,7 @@ export default function GoalScreen() {
           className="relative mx-auto flex min-h-screen max-w-2xl flex-col justify-center px-6 py-16"
         >
           {/* wordmark + tagline */}
-          <motion.div variants={item} className="text-center">
+          <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.55, ease: EASE }} className="text-center">
             <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-muted">
               Agents propose · Humans merge
             </p>
@@ -104,7 +104,7 @@ export default function GoalScreen() {
 
           {/* console */}
           <motion.div
-            variants={item}
+            initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.55, ease: EASE }}
             className="mt-12 rounded-2xl border bg-panel/70 p-5 backdrop-blur-sm"
           >
             <p className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-muted">

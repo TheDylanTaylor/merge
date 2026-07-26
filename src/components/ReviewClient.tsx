@@ -273,17 +273,17 @@ export default function ReviewClient({ id }: { id: string }) {
             ) : (
               <motion.div
                 key="diff"
-                variants={listVariants}
-                initial="hidden"
-                animate="show"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: phase === "merging" ? 0.5 : 1 }}
                 exit={{ opacity: 0 }}
                 className="space-y-9"
-                style={{ opacity: phase === "merging" ? 0.5 : 1 }}
               >
-                {groups.map((g) => (
+                {groups.map((g, gi) => (
                   <motion.section
                     key={g.system}
-                    variants={sectionVariants}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, ease: EASE, delay: gi * 0.05 }}
                     className="space-y-3"
                   >
                     <div className="flex items-center gap-2.5">
@@ -296,7 +296,7 @@ export default function ReviewClient({ id }: { id: string }) {
                       <div className="h-px flex-1 bg-border" />
                     </div>
 
-                    <motion.div variants={listVariants} className="space-y-3">
+                    <motion.div className="space-y-3">
                       {g.changes.map((c) => (
                         <HunkCard
                           key={c.id}

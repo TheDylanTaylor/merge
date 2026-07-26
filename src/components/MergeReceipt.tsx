@@ -82,7 +82,7 @@ export default function MergeReceipt({
       className="mx-auto max-w-3xl"
     >
       {/* header */}
-      <motion.div variants={row} className="mb-6 flex items-center gap-4">
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: EASE }} className="mb-6 flex items-center gap-4">
         <div
           className="grid h-12 w-12 shrink-0 place-items-center rounded-full border"
           style={{
@@ -128,7 +128,7 @@ export default function MergeReceipt({
           return (
             <motion.div
               key={r.hunkId}
-              variants={row}
+              initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: EASE }}
               className="flex items-center gap-3 rounded-xl border bg-panel px-4 py-3"
               style={{
                 opacity: reverted ? 0.55 : 1,
@@ -226,7 +226,7 @@ export default function MergeReceipt({
 
       {/* footer actions */}
       <motion.div
-        variants={row}
+        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: EASE }}
         className="mt-7 flex items-center justify-between gap-3"
       >
         <button
